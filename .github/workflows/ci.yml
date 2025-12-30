@@ -22,6 +22,7 @@ jobs:
   test:
     runs-on: ${{ matrix.config.os }}
     strategy:
+      fail-fast: false
       matrix:
         # Note: GitHub does not host Alpine runners, so we skip testing there for now.
         config:
@@ -31,15 +32,31 @@ jobs:
           - { os: macos-15-intel, arch: x64 } # foundry_v[ersion]_darwin_amd64.tar.gz
           - { os: windows-latest, arch: x64 } # foundry_v[ersion]_windows_amd64.zip
         version: [stable, nightly]
+        network: [ethereum, tempo]
+        include:
+          # Both with and without `v` prefix.
+          - network: ethereum
+            version: 1.5.0
+            config:
+              os: ubuntu-latest
+              arch: x64
+          - network: ethereum
+            version: v1.5.0
+            config:
+              os: ubuntu-latest
+              arch: x64
+        exclude:
+          - network: tempo
+            version: stable
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
       - name: Use Node.js 24.x
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: 24.x
 
@@ -52,21 +69,32 @@ jobs:
       - name: Test action installation (${{ matrix.version }})
         uses: ./
         with:
+          network: ${{ matrix.network }}
           version: ${{ matrix.version }}
           cache: false
 
-      - name: Verify Foundry installation
+      - name: Verify Foundry installation (${{ matrix.network }})
         shell: bash
         run: |
-          forge --version
-          cast --version
-          anvil --version
-          chisel --version
+          if [[ "${{ matrix.network }}" == "tempo" ]]; then
+            forge --version
+            cast --version
+          else
+            forge --version
+            cast --version
+            anvil --version
+            chisel --version
+          fi
 
-      - name: Test basic Foundry functionality
+      - name: Test basic Foundry functionality (${{ matrix.network }})
         shell: bash
         run: |
-          forge init test-project --force
+          if [[ "${{ matrix.network }}" == "tempo" ]]; then
+            forge init -n tempo test-project --force
+          else
+            forge init test-project --force
+          fi
+
           cd test-project
           forge build
           forge test -vvv
@@ -76,12 +104,12 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
       - name: Use Node.js 24.x
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: 24.x
 
@@ -101,7 +129,7 @@ jobs:
         id: diff
 
       # If index.js was different than expected, upload the expected version as an artifact
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ failure() && steps.diff.conclusion == 'failure' }}
         with:
           name: dist
@@ -126,7 +154,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           persist-credentials: false
 
@@ -138,7 +166,7 @@ jobs:
 
       - name: Setup environment (JavaScript)
         if: matrix.language == 'javascript'
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: 24.x
 
