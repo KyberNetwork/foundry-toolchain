@@ -48,25 +48,35 @@ jobs:
 
 ### Inputs
 
-| **Name**             | **Required** | **Default**                           | **Description**                                                                                                                                       | **Type** |
-| -------------------- | ------------ | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| `version`            | No           | `stable`                              | Version to install, e.g. `stable`, `rc`, `nightly` or any [SemVer](https://semver.org/) version with or without `v` prefix (e.g. `v1.5.0` or `1.5.0`) | string   |
-| `network`            | No           | `ethereum`                            | Network version to install, e.g. `ethereum`, `tempo`.                                                                                                 | string   |
-| `cache`              | No           | `true`                                | Whether to cache Foundry data or not.                                                                                                                 | bool     |
-| `cache-key`          | No           | `${{ github.job }}-${{ github.sha }}` | The cache key to use for caching.                                                                                                                     | string   |
-| `cache-restore-keys` | No           | `[${{ github.job }}-]`                | The cache keys to use for restoring the cache.                                                                                                        | string[] |
+| **Name**             | **Required** | **Default**                                                                                                                                     | **Description**                                                                                                                                       | **Type** |
+| -------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `version`            | No           | `stable`                                                                                                                                        | Version to install, e.g. `stable`, `rc`, `nightly` or any [SemVer](https://semver.org/) version with or without `v` prefix (e.g. `v1.5.0` or `1.5.0`) | string   |
+| `network`            | No           | `ethereum`                                                                                                                                      | Network version to install, e.g. `ethereum`, `tempo`.                                                                                                 | string   |
+| `cache`              | No           | `true`                                                                                                                                          | Whether to cache Foundry data or not.                                                                                                                 | bool     |
+| `cache-key`          | No           | `${{ github.job }}-${{ github.ref }}-${{ github.sha }}`                                                                                         | The cache key to use for caching.                                                                                                                     | string   |
+| `cache-restore-keys` | No           | `[${{ github.job }}-${{ github.ref }}-, ${{ github.job }}-refs/heads/${{ github.base_ref }}- (PRs only), ${{ github.job }}- (legacy fallback)]` | The cache keys to use for restoring the cache.                                                                                                        | string[] |
 
 ### Caching
 
 By default, this action matches Forge's behavior and caches all RPC responses, Etherscan queries, and other data in the
 `~/.foundry/cache` directory. This is done to speed up the tests and avoid hitting the rate limit of your RPC provider.
 
-The logic of the caching is as follows:
+The default logic of the caching is as follows:
 
-- Always load the latest valid cache, and always create a new one with the updated cache.
+- Always load the latest valid cache for the current ref (for example, the same branch or the same PR merge ref), and
+  always create a new one with the updated cache.
+- On pull requests, if there is no cache for the PR ref yet, fall back to the latest cache for the base branch.
+- If neither scoped cache exists yet, fall back once more to the legacy job-wide prefix so older caches remain usable
+  during migration.
 - When there are no changes to the fork tests, the cache does not change but the key does, since the key is based on the
   commit hash.
 - When the fork tests are changed, both the cache and the key are updated.
+
+Scoping the default restore keys to `github.ref`, with an explicit `github.base_ref` fallback for pull requests, avoids
+a PR restoring the newest cache from an unrelated ref that happens to share the same job prefix while still letting the
+first PR run warm from the base branch cache. The final `${{ github.job }}-` fallback is kept only for backward
+compatibility with older caches and is intentionally lower priority because it can match caches from unrelated refs. If
+you intentionally want to share caches across different refs, pass broader `cache-restore-keys` explicitly.
 
 If you would like to disable the caching (e.g. because you want to implement your own caching mechanism), you can set
 the `cache` input to `false`, like this:

@@ -30,19 +30,21 @@ inputs:
       Caching is activated by default.
     required: false
   cache-key:
-    default: "${{ github.job }}-${{ github.sha }}"
+    default: "${{ format('{0}-{1}-{2}', github.job, github.ref, github.sha) }}"
     description: |
       A custom cache key to use.
 
-      This key is used to identify the cache. If not provided, a default key consisting of the job id and the commit hash is used.
+      This key is used to identify the cache. If not provided, a default key consisting of the job id, git ref, and commit hash is used.
     required: false
   cache-restore-keys:
     default: |-
+      ${{ format('{0}-{1}-', github.job, github.ref) }}
+      ${{ github.base_ref && format('{0}-refs/heads/{1}-', github.job, github.base_ref) || '' }}
       ${{ github.job }}-
     description: |
       Custom cache restore keys to use.
 
-      This key is used to identify the cache to restore. If not provided, a default key consisting of the job id is used.
+      This key is used to identify the cache to restore. If not provided, the action first restores from the current git ref, then from the base branch ref on pull requests, and finally from the legacy job-wide prefix for backward compatibility.
     required: false
 
 runs:
