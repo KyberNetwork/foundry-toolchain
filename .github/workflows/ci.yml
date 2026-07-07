@@ -32,70 +32,68 @@ jobs:
           - { os: macos-15-intel, arch: x64 } # foundry_v[ersion]_darwin_amd64.tar.gz
           - { os: windows-latest, arch: x64 } # foundry_v[ersion]_windows_amd64.zip
         version: [stable, nightly]
-        network: [ethereum, tempo]
         include:
           # Both with and without `v` prefix.
-          - network: ethereum
-            version: 1.5.0
+          - version: 1.5.0
             config:
               os: ubuntu-latest
               arch: x64
-          - network: ethereum
-            version: v1.5.0
+          - version: v1.5.0
             config:
               os: ubuntu-latest
               arch: x64
-        exclude:
-          - network: tempo
-            version: stable
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
-      - name: Use Node.js 24.x
-        uses: actions/setup-node@v6
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 24.x
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
 
       - name: Install dependencies
-        run: npm ci --ignore-scripts
+        run: pnpm install --frozen-lockfile
 
       - name: Rebuild dist/
-        run: npm run build
+        run: pnpm run build
 
       - name: Test action installation (${{ matrix.version }})
         uses: ./
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
-          network: ${{ matrix.network }}
           version: ${{ matrix.version }}
           cache: false
 
-      - name: Verify Foundry installation (${{ matrix.network }})
+      - name: Verify Foundry installation
         shell: bash
         run: |
-          if [[ "${{ matrix.network }}" == "tempo" ]]; then
-            forge --version
-            cast --version
-          else
-            forge --version
-            cast --version
-            anvil --version
-            chisel --version
-          fi
+          forge --version
+          cast --version
+          anvil --version
+          chisel --version
 
-      - name: Test basic Foundry functionality (${{ matrix.network }})
+      - name: Test basic Foundry functionality (default)
         shell: bash
         run: |
-          if [[ "${{ matrix.network }}" == "tempo" ]]; then
-            forge init -n tempo test-project --force
-          else
-            forge init test-project --force
-          fi
-
+          forge init test-project --force
           cd test-project
+          forge build
+          forge test -vvv
+
+      - name: Test basic Foundry functionality (tempo)
+        if: matrix.version == 'nightly'
+        shell: bash
+        run: |
+          forge init test-project-tempo -n tempo --force
+          cd test-project-tempo
           forge build
           forge test -vvv
 
@@ -104,20 +102,24 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
-      - name: Use Node.js 24.x
-        uses: actions/setup-node@v6
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 24.x
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
 
       - name: Install dependencies
-        run: npm ci --ignore-scripts
+        run: pnpm install --frozen-lockfile
 
       - name: Rebuild dist/
-        run: npm run build
+        run: pnpm run build
 
       - name: Compare the expected and actual dist/ directories
         run: |
@@ -129,7 +131,7 @@ jobs:
         id: diff
 
       # If index.js was different than expected, upload the expected version as an artifact
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ failure() && steps.diff.conclusion == 'failure' }}
         with:
           name: dist
@@ -154,32 +156,37 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
 
-      - name: Setup environment (JavaScript)
+      - name: Set up pnpm
         if: matrix.language == 'javascript'
-        uses: actions/setup-node@v6
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Set up Node.js
+        if: matrix.language == 'javascript'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 24.x
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
 
       - name: Install dependencies (JavaScript)
         if: matrix.language == 'javascript'
-        run: npm ci --ignore-scripts
+        run: pnpm install --frozen-lockfile
 
       - name: Build (JavaScript)
         if: matrix.language == 'javascript'
-        run: npm run build
+        run: pnpm run build
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:
           category: "/language:${{matrix.language}}"
 
@@ -193,6 +200,6 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Decide whether the needed jobs succeeded or failed
-        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1
+        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
         with:
           jobs: ${{ toJSON(needs) }}

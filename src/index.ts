@@ -1,5 +1,5 @@
 import * as core from "@actions/core";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as https from "https";
 import * as os from "os";
@@ -8,7 +8,8 @@ import type { IncomingMessage } from "http";
 
 import { restoreCache } from "./cache.js";
 
-const FOUNDRYUP_INSTALLER_URL = "https://raw.githubusercontent.com/foundry-rs/foundry/HEAD/foundryup/install";
+const FOUNDRYUP_INSTALLER_COMMIT = "a27902ef04dcb43061fabf343365cb5afc95fc48";
+const FOUNDRYUP_INSTALLER_URL = `https://raw.githubusercontent.com/foundry-rs/foundryup/${FOUNDRYUP_INSTALLER_COMMIT}/foundryup-init.sh`;
 const FOUNDRY_DIR = path.join(os.homedir(), ".foundry");
 const FOUNDRY_BIN = path.join(FOUNDRY_DIR, "bin");
 const FOUNDRY_TOOLS = ["forge", "cast", "anvil", "chisel"];
@@ -60,14 +61,19 @@ function buildFoundryupArgs(): string[] {
   }
 
   if (version && version !== "stable") args.push("--install", version);
-  if (network && network !== "ethereum") args.push("--network", network);
+  if (network && network !== "ethereum") {
+    core.warning(
+      `The "network" input is deprecated. Tempo is now part of main Foundry. This input will be removed in a future release.`,
+    );
+    args.push("--network", network);
+  }
 
   return args;
 }
 
-function run(cmd: string, ignoreShellError = false): void {
+function run(file: string, args: string[], ignoreShellError = false): void {
   try {
-    execSync(cmd, { stdio: "pipe", env: { ...process.env, FOUNDRY_DIR } });
+    execFileSync(file, args, { stdio: "pipe", env: { ...process.env, FOUNDRY_DIR } });
   } catch (err) {
     const execErr = err as { stdout?: Buffer; stderr?: Buffer; message?: string };
     const output = [execErr.stdout, execErr.stderr, execErr.message].map((b) => b?.toString() || "").join("\n");
@@ -82,25 +88,36 @@ function run(cmd: string, ignoreShellError = false): void {
   }
 }
 
+function foundryupExecutable(): string {
+  const foundryup = path.join(FOUNDRY_BIN, "foundryup");
+  if (process.platform !== "win32") return foundryup;
+
+  const foundryupExe = `${foundryup}.exe`;
+  if (fs.existsSync(foundryup) && !fs.existsSync(foundryupExe)) {
+    fs.copyFileSync(foundryup, foundryupExe);
+    fs.chmodSync(foundryupExe, 0o755);
+  }
+  return foundryupExe;
+}
+
 async function main(): Promise<void> {
   try {
     const version = core.getInput("version") || "stable";
-    const network = core.getInput("network") || "ethereum";
-    core.info(`Installing Foundry (version: ${version}, network: ${network})`);
+    core.info(`Installing Foundry (version: ${version})`);
 
     // Download and run the installer.
     const installer = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "foundryup-")), "install");
-    core.info("Downloading foundryup installer...");
+    core.info(`Downloading foundryup installer from foundry-rs/foundryup@${FOUNDRYUP_INSTALLER_COMMIT}...`);
     await download(FOUNDRYUP_INSTALLER_URL, installer);
 
     core.info("Running foundryup installer...");
-    run(`bash "${installer}"`, true);
+    run("bash", [installer], true);
 
-    // Run foundryup to install binaries (use bash since foundryup is a shell script).
-    const foundryup = path.join(FOUNDRY_BIN, "foundryup");
+    // Run foundryup to install binaries.
+    const foundryup = foundryupExecutable();
     const args = buildFoundryupArgs();
     core.info(`Running: foundryup ${args.join(" ")}`);
-    run(`bash "${foundryup}" ${args.join(" ")}`);
+    run(foundryup, args);
 
     core.addPath(FOUNDRY_BIN);
     core.info(`Added ${FOUNDRY_BIN} to PATH`);
@@ -116,7 +133,7 @@ async function main(): Promise<void> {
     for (const bin of FOUNDRY_TOOLS) {
       try {
         core.info(`Running: ${bin} --version`);
-        execSync(`${bin} --version`, { stdio: "inherit" });
+        execFileSync(bin, ["--version"], { stdio: "inherit" });
       } catch {}
     }
   } catch (err) {
