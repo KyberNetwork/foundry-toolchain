@@ -48,34 +48,37 @@ jobs:
 
 ### Inputs
 
-| **Name**             | **Required** | **Default**                           | **Description**                                                                                                                                 | **Type** |
-| -------------------- | ------------ | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| `version`            | No           | `stable`                              | Version to install, e.g. `stable`, `nightly` or any [SemVer](https://semver.org/) version with or without `v` prefix (e.g. `v1.5.0` or `1.5.0`) | string   |
-| `cache`              | No           | `true`                                | Whether to cache Foundry data or not.                                                                                                           | bool     |
-| `cache-key`          | No           | `${{ github.job }}-${{ github.sha }}` | The cache key to use for caching.                                                                                                               | string   |
-| `cache-restore-keys` | No           | `[${{ github.job }}-]`                | The cache keys to use for restoring the cache.                                                                                                  | string[] |
+| **Name**             | **Required** | **Default**                                             | **Description**                                                                                                                                 | **Type** |
+| -------------------- | ------------ | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `version`            | No           | `stable`                                                | Version to install, e.g. `stable`, `nightly` or any [SemVer](https://semver.org/) version with or without `v` prefix (e.g. `v1.5.0` or `1.5.0`) | string   |
+| `cache`              | No           | `true`                                                  | Whether to cache Foundry data or not.                                                                                                           | bool     |
+| `cache-key`          | No           | `${{ github.job }}-${{ github.ref }}-${{ github.sha }}` | The cache key to use for caching.                                                                                                               | string   |
+| `cache-restore-keys` | No           | See [Caching](#caching)                                 | The cache keys to use for restoring the cache.                                                                                                  | string[] |
 
 ### Caching
 
 By default, this action matches Forge's behavior and caches all RPC responses, Etherscan queries, and other data in the
 `~/.foundry/cache` directory. This is done to speed up the tests and avoid hitting the rate limit of your RPC provider.
 
-The default logic of the caching is as follows:
+By default, the cache is restored from the first of these restore keys that matches:
 
-- Always load the latest valid cache for the current ref (for example, the same branch or the same PR merge ref), and
-  always create a new one with the updated cache.
-- On pull requests, if there is no cache for the PR ref yet, fall back to the latest cache for the base branch.
-- If neither scoped cache exists yet, fall back once more to the legacy job-wide prefix so older caches remain usable
-  during migration.
+1. `${{ github.job }}-${{ github.ref }}-`: the latest cache for the current ref (a branch, a tag, or a PR merge ref such
+   as `refs/pull/123/merge`).
+2. `${{ github.job }}-refs/heads/${{ github.base_ref }}-`: on pull requests only, the latest cache for the base branch,
+   so the first run of a PR starts warm.
+3. `${{ github.job }}-`: the legacy job-wide prefix, kept so caches created before ref scoping remain usable. It can
+   match caches from unrelated refs, which is why it is tried last.
+
+A new cache is then saved under `${{ github.job }}-${{ github.ref }}-${{ github.sha }}`:
+
+- The cache is saved even when the job fails, so RPC responses fetched by a failing fork test are not lost.
 - When there are no changes to the fork tests, the cache does not change but the key does, since the key is based on the
   commit hash.
 - When the fork tests are changed, both the cache and the key are updated.
+- Cache keys are immutable, so re-running a job for the same commit restores the cache saved by the first attempt and
+  does not save a new one.
 
-Scoping the default restore keys to `github.ref`, with an explicit `github.base_ref` fallback for pull requests, avoids
-a PR restoring the newest cache from an unrelated ref that happens to share the same job prefix while still letting the
-first PR run warm from the base branch cache. The final `${{ github.job }}-` fallback is kept only for backward
-compatibility with older caches and is intentionally lower priority because it can match caches from unrelated refs. If
-you intentionally want to share caches across different refs, pass broader `cache-restore-keys` explicitly.
+To share caches across refs on purpose, set `cache-restore-keys` yourself (see [Custom Cache Keys](#custom-cache-keys)).
 
 If you would like to disable the caching (e.g. because you want to implement your own caching mechanism), you can set
 the `cache` input to `false`, like this:
